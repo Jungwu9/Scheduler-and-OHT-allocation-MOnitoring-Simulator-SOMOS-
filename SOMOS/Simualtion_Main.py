@@ -4,6 +4,7 @@ import random
 import heapq
 import time
 import argparse
+import os
 from dataclasses import replace
 from collections import Counter, deque
 
@@ -15,6 +16,13 @@ from Simulation_Machine_Config import MachineConfig, JSSPConfig
 from Simulation_Machine import MachineStation, Job, MachineBreakdown
 from Decision_Maker_OHT import OHTDecisionMaker, RandomRoam, BFSPath, AStarPath
 from Decision_Maker_Machine import MachineDecisionMaker, GanttHTMLExporter
+from UI.live_trace_hooks import (
+    TRANSPORT_FIELDS,
+    append_oht_event_trace,
+    append_transport_event,
+    close_live_states,
+    create_live_states,
+)
 
 
 class OHTVehicle(sim.Component):
@@ -43,6 +51,8 @@ class OHTVehicle(sim.Component):
             zcu_occupied_by=None,
             route_node_pass_times=None,
             transport_event_log=None,
+            transport_live_state=None,
+            oht_event_trace_state=None,
 
     ):
         self.vid = vid
@@ -92,6 +102,8 @@ class OHTVehicle(sim.Component):
         # Shared list of actual transport event logs per OHT
         # Used for transport.csv and computing the transport bar of the actual machine gantt.
         self.transport_event_log = transport_event_log if transport_event_log is not None else []
+        self.transport_live_state = transport_live_state
+        self.oht_event_trace_state = oht_event_trace_state
 
         self.next_hop_intent = None
         self.roam_target = None   # C1: idle positioning target node (not a task, for drifting)
@@ -129,6 +141,22 @@ class OHTVehicle(sim.Component):
         self.merge_wait_key = None
         self.merge_wait_since = None
         self.last_yield_time = -1e18
+        self._append_oht_event_trace({
+            "sim_time": 0.0,
+            "end_time": 0.0,
+            "oht_id": self.vid,
+            "event": "INIT",
+            "state": "Empty",
+            "new_state": "Empty",
+            "phase": "init",
+            "from_node": start_node,
+            "to_node": start_node,
+            "x": round(float(self.draw_x), 3),
+            "y": round(float(self.draw_y), 3),
+            "x1": round(float(self.draw_x), 3),
+            "y1": round(float(self.draw_y), 3),
+            "dispatch_mode": getattr(self.oht_config, "oht_dispatch_mode", ""),
+        })
 
     # -----------------------------------------------------
     # dispatch
@@ -1255,12 +1283,49 @@ class OHTVehicle(sim.Component):
                 self.move_t0 = self.env.now()
                 self.move_t1 = self.env.now() + edge.travel_time
                 self.move_active = True
+                phase = "loaded" if self.cargo_job is not None else "empty"
+                self._append_oht_event_trace({
+                    "sim_time": round(float(self.move_t0), 3),
+                    "end_time": round(float(self.move_t1), 3),
+                    "oht_id": self.vid,
+                    "event": "EDGE_START",
+                    "state": self.state_name,
+                    "phase": phase,
+                    "from_node": self.pos_node,
+                    "to_node": next_node_name,
+                    "x": round(float(x0), 3),
+                    "y": round(float(y0), 3),
+                    "x1": round(float(x1), 3),
+                    "y1": round(float(y1), 3),
+                    "job_id": getattr(self.cargo_job, "job_type_id", ""),
+                    "job_instance_id": getattr(self.cargo_job, "job_id", ""),
+                    "op_index": getattr(self.cargo_job, "op_index", ""),
+                    "dispatch_mode": getattr(self.oht_config, "oht_dispatch_mode", ""),
+                })
 
                 self._transit_acc += edge.travel_time
                 yield self.hold(edge.travel_time)
 
                 self.move_active = False
                 self.pos_node = next_node_name
+                self._append_oht_event_trace({
+                    "sim_time": round(float(self.env.now()), 3),
+                    "end_time": round(float(self.env.now()), 3),
+                    "oht_id": self.vid,
+                    "event": "EDGE_END",
+                    "state": self.state_name,
+                    "phase": phase,
+                    "from_node": cur.name,
+                    "to_node": next_node_name,
+                    "x": round(float(x1), 3),
+                    "y": round(float(y1), 3),
+                    "x1": round(float(x1), 3),
+                    "y1": round(float(y1), 3),
+                    "job_id": getattr(self.cargo_job, "job_type_id", ""),
+                    "job_instance_id": getattr(self.cargo_job, "job_id", ""),
+                    "op_index": getattr(self.cargo_job, "op_index", ""),
+                    "dispatch_mode": getattr(self.oht_config, "oht_dispatch_mode", ""),
+                })
                 self._record_route_node_pass(next_node_name)
                 self._record_hotspot_fork_pass(next_node_name)
                 self.draw_x = x1
@@ -1457,9 +1522,10 @@ class OHTVehicle(sim.Component):
         return None
 
     def _append_transport_event(self, rec):
-        rec = dict(rec)
-        rec["event_id"] = len(self.transport_event_log) + 1
-        self.transport_event_log.append(rec)
+        append_transport_event(self.transport_event_log, self.transport_live_state, rec)
+
+    def _append_oht_event_trace(self, rec):
+        append_oht_event_trace(self.oht_event_trace_state, rec)
 
     # -----------------------------------------------------
     # load / unload
@@ -2042,6 +2108,11 @@ class SimulationRunner:
         self.machines = {}
         self.vehicles = []
         self.transport_event_log = []
+        out_dir = os.path.dirname(os.path.abspath(self.jssp_cfg.simulation_log_gantt_csv))
+        live_states = create_live_states(out_dir)
+        self.transport_live_state = live_states["transport"]
+        self.machine_live_state = live_states["machine"]
+        self.oht_event_trace_state = live_states["oht_event"]
 
         self.machine_node_map: dict = {}  # {jssp_machine_id: node_name}
         self._machine_nodes_sorted = []
@@ -2702,6 +2773,7 @@ class SimulationRunner:
                 machine_name=m_name,                     # the gantt machine name of this station
                 machine_node_map=self.machine_node_map,  # {M-name: node} (completed at runtime)
                 rng=_random.Random(seed0 * 1000 + m_no), # realized proc sample reproducibility
+                machine_live_state=self.machine_live_state,
             )
 
         self._machine_nodes_sorted = sorted(
@@ -2780,6 +2852,8 @@ class SimulationRunner:
                 zcu_occupied_by=self.zcu_occupied_by,
                 route_node_pass_times=self.route_node_pass_times,
                 transport_event_log=self.transport_event_log,
+                transport_live_state=self.transport_live_state,
+                oht_event_trace_state=self.oht_event_trace_state,
 
             )
             self.vehicles.append(veh)
@@ -3236,27 +3310,18 @@ class SimulationRunner:
             _os.path.dirname(_os.path.abspath(self.jssp_cfg.simulation_log_gantt_csv)),
             'transport.csv'
         )
-        transport_fields = [
-            'event_id', 'oht_id', 'job_id', 'job_instance_id', 'op_index',
-            'from_machine', 'to_machine', 'from_node', 'to_node',
-            'dispatch_time', 'prev_machine_end_time', 'source_arrival_time',
-            'pickup_wait_start_time', 'pickup_time',
-            'load_start_time', 'load_end_time',
-            'loaded_travel_start_time', 'dest_arrival_time',
-            'unload_start_time', 'unload_end_time', 'dropoff_time',
-            'source_wait_time', 'empty_to_source_time', 'pickup_wait_time',
-            'loading_time', 'loaded_travel_time', 'unloading_time', 'drop_wait_time',
-            'pure_oht_transport_time', 'actual_transport_time',
-            'free_flow_shortest_time', 'free_flow_actual_path_time',
-            'blocking_loaded_time', 'blocking_ratio', 'detour_ratio',
-            'lot_id', 'step_no', 'planned_travel', 'transport_deviation',
-        ]
         with open(transport_path, 'w', newline='', encoding='utf-8') as f:
-            w = _csv.DictWriter(f, fieldnames=transport_fields)
+            w = _csv.DictWriter(f, fieldnames=TRANSPORT_FIELDS)
             w.writeheader()
             for tr in transport_rows:
-                w.writerow({k: tr.get(k, '') for k in transport_fields})
+                w.writerow({k: tr.get(k, '') for k in TRANSPORT_FIELDS})
         print(f"  [SIM LOG] transport          → {transport_path}")
+
+        close_live_states(
+            getattr(self, "transport_live_state", None),
+            getattr(self, "machine_live_state", None),
+            getattr(self, "oht_event_trace_state", None),
+        )
 
         # (gantt mode) removed the ta01 result_gantt reconstruction.
         # Measured results are in machine_sim.csv (realized+ready_deviation) + transport.csv (transport_deviation).
@@ -3532,9 +3597,8 @@ if __name__ == "__main__":
             # random seed override → applied to all randomness such as machine realized-proc samples / idle roaming
             runner_.oht_config.seed = int(args.seed)
 
-
+    rows = []
     if args.compare_paths:
-        rows = []
         for algo in ['ASTAR', 'BFS']:
             case_dir = f'{args.output_dir}_{algo.lower()}_headless'
             cfg = _jssp_cfg_with_output_dir(base_cfg, case_dir)

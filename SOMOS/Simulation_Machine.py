@@ -5,6 +5,8 @@ from typing import List, Optional
 
 import salabim as sim
 
+from UI.live_trace_hooks import append_machine_live_event
+
 
 @dataclass
 class Job:
@@ -59,6 +61,7 @@ class MachineStation(sim.Component):
         schedule=None,          # GanttSchedule instance (gantt mode). If given, used instead of jssp_data
         machine_name=None,      # this station's physical machine name (e.g. "M37"). Required in gantt mode
         rng=None,               # random.Random for realized proc sampling (optional)
+        machine_live_state=None,
     ):
         self.node = node
         self.machine_config = machine_config
@@ -69,6 +72,7 @@ class MachineStation(sim.Component):
         self.schedule = schedule
         self.machine_name = machine_name
         self._rng = rng
+        self.machine_live_state = machine_live_state
         self._broken = False    # disturbance robustness: halt processing while broken
 
         self.in_buffer: List[Job] = []
@@ -301,13 +305,14 @@ class MachineStation(sim.Component):
             _planned_ready = round(finished.planned_ready_time, 3)
 
             # gantt and machine scheduling — record execution event
-            self._sim_log.append({
+            rec = {
                 'sim_time': round(self.env.now(), 3),
                 'node_name': self.node.name,
                 'machine_no': getattr(self.node, 'machine_no', None),
                 'machine_name': self.machine_name,
                 'jssp_mach_id': (self.jssp_machine_id + 1) if self.jssp_machine_id is not None else None,
                 'job_id': finished.job_id,
+                'job_instance_id': finished.job_id,
                 'lot_id': finished.lot_id,
                 'step_no': _finished_step,
                 'job_type_id': finished.job_type_id,
@@ -320,7 +325,9 @@ class MachineStation(sim.Component):
                 'planned_ready_time': _planned_ready,    # gantt planned end (= transport planned dispatch-out)
                 'realized_ready_time': _realized_ready,  # actual end (= transport actual dispatch-out possible)
                 'ready_deviation': round(_realized_ready - _planned_ready, 3),
-            })
+            }
+            self._sim_log.append(rec)
+            append_machine_live_event(self.machine_live_state, rec)
 
 class MachineBreakdown(sim.Component):
     """For disturbance robustness experiments: drives one machine's breakdown/repair.
