@@ -1,5 +1,5 @@
-# Python 3.11 (developed/tested on 3.11).
-salabim==26.0.5
+# Python 3.11+ (developed and tested on 3.11).
+salabim==26.0.5     # discrete-event engine
 numpy==2.4.4
-scipy==1.17.1
-pandas==3.0.2
+scipy==1.17.1       # linear_sum_assignment (the Hungarian dispatcher)
+pandas==3.0.2       # layout CSV parsing
