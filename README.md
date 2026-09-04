@@ -2,7 +2,7 @@
 
 Code for the paper
 
-> **Empty Vehicle Dispatching of OHT Towards Minimized Makespan by Leveraging Machine Schedule**
+> **Schedule-Aware Vehicle Distribution for OHT Systems in Semiconductor Manufacturing**
 
 ---
 
