@@ -1,0 +1,1 @@
+sim_time,node_name,machine_no,machine_name,jssp_mach_id,job_id,job_instance_id,lot_id,step_no,job_type_id,op_index,product_type,start_time,end_time,process_time,planned_ready_time,realized_ready_time,ready_deviation
