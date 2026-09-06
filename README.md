@@ -2,9 +2,42 @@
 
 Code for the paper
 
-> **Schedule-Aware Vehicle Distribution for OHT Systems in Semiconductor Manufacturing**
+> **Schedule-Aware Empty Vehicle Dispatching for OHT Systems in Semiconductor Manufacturing**
 
 ---
+
+## Dataset
+
+The fab specification is taken from the mini-FAB testbed of
+
+> H. Kim, D.-E. Lim and S. Lee, "Deep Learning-Based Dynamic Scheduling for Semiconductor
+> Manufacturing With High Uncertainty of Automated Material Handling System Capability,"
+> *IEEE Transactions on Semiconductor Manufacturing*, vol. 33, no. 1, pp. 13-22, 2020.
+
+Its four specification tables are shipped unchanged in `Dataset/` (with the working copies at the
+repository root, where the simulator reads them):
+
+| File | Content |
+|---|---|
+| `ProcessStepInfo.txt` | the 40-step re-entrant flow — machine type per step, processing-time mean / SD / truncation minimum (normal), metrology skip probability |
+| `MachineInfo.txt` | 100 production machines — machine type, machine group, bay |
+| `MachineTypeInfo.txt` | per machine type — WIP limit, duration limit, WIP allocation rule, dispatching rule |
+| `TravelTimeInfo.txt` | bay-to-bay travel time (mean / SD / minimum) over the 10 bays |
+
+In that testbed transport is not simulated physically: a move consumes a travel time sampled from
+the source–destination bay pair, so vehicles never interfere with each other and AMHS load enters
+only through that distribution. We keep the fab as specified — 6 machine types, 100 machines,
+10 bays, 40 steps — and rebuild the transport layer at fab scale:
+
+* the 100 machines become stations `M_1`…`M_100` on the 1,622-node single-lane rail
+  (`layout_machine.csv`), and every move is executed by an actual vehicle, so travel time is
+  produced by routing, edge occupancy and merge conflicts instead of being drawn from a table;
+* `TravelTimeInfo.txt` is therefore used off-line only, to build the fixed production plan in
+  `gantt_final/` (`planned_travel_sec`, `planned_avg_travel_sec`) — it is the schedule's travel
+  estimate, and the gap between it and the realised rail travel is what the dispatching methods
+  are measured on;
+* `ProcessStepInfo.txt` is read at run time to sample the realised processing time of each
+  operation.
 
 ## Simulation
 
@@ -18,7 +51,7 @@ operation; the dispatcher assigns an empty vehicle; the vehicle travels, loads, 
 the next operation starts only once the lot has arrived. Transport delay therefore postpones the
 operations that depend on it, instead of being absorbed as a fixed inter-operation time.
 
-The production plan is fixed and shipped with the repository — 33,510 operations over 2,000 lots,
+The production plan is fixed and shipped with the repository — 33,510 operations over 979 lots,
 679 of them planned to complete within 24 h at 95 % machine utilisation — and is replayed
 identically by every method and seed, so run-to-run differences come only from dispatching and the
 traffic it creates.
