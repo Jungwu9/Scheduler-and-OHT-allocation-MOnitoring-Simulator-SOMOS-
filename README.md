@@ -2,7 +2,7 @@
 
 Code for the paper
 
-> **Schedule-Aware Empty Vehicle Dispatching for OHT Systems in Semiconductor Manufacturing**
+> **Schedule-Informed Empty-Vehicle Dispatching for OHT Systems in Semiconductor Manufacturing**
 
 ---
 
@@ -83,13 +83,13 @@ Seven dispatching methods are implemented:
 | `FIFO` | source ready first | random roam |
 | `PRIORITY` | largest lateness + source queue pressure | random roam |
 | `HUNGARIAN` | global minimum-sum assignment over the vehicle × task travel-time matrix | random roam |
-| **`SAVD`** | **the same Hungarian assignment** | **schedule-aware distribution** |
+| **`SEVD`** | **the same Hungarian assignment** | **schedule-aware distribution** |
 
-**SAVD (Schedule-Aware Vehicle Distribution)** is the proposed method. It repositions *idle*
-vehicles before pickup requests occur, and leaves request assignment untouched — SAVD and
+**SEVD (Schedule-Aware Vehicle Distribution)** is the proposed method. It repositions *idle*
+vehicles before pickup requests occur, and leaves request assignment untouched — SEVD and
 `HUNGARIAN` use the identical Hungarian procedure, so they differ in exactly one thing.
 
-Every 45 s SAVD
+Every 45 s SEVD
 
 1. estimates spatial transport demand per machine from three sources — a fixed weight for a lot
    already waiting in the output buffer, a weight that grows as the operation in process
@@ -103,16 +103,16 @@ Every 45 s SAVD
 A repositioned vehicle is only given a roam target: it is never reserved for a future request and
 remains available for normal assignment at any moment.
 
-| SAVD parameter | Default | Config key |
+| SEVD parameter | Default | Config key |
 |---|---|---|
-| immediate pickup demand weight (α) | 3 | constant in `_assign_savd_positioning` |
-| remaining processing time window (H) | 900 s | `oht_savd_window` |
-| schedule demand weight (λ) | 1.0 | `oht_savd_prior_weight` |
-| spatial cell size | layout span / 4 | `oht_savd_grid` (0 = auto) |
-| repositioning interval | 45 s | `oht_savd_dt` |
+| immediate pickup demand weight (α) | 3 | constant in `_assign_SEVD_positioning` |
+| remaining processing time window (H) | 900 s | `oht_SEVD_window` |
+| schedule demand weight (λ) | 1.0 | `oht_SEVD_prior_weight` |
+| spatial cell size | layout span / 4 | `oht_SEVD_grid` (0 = auto) |
+| repositioning interval | 45 s | `oht_SEVD_dt` |
 
-Implementation: `OHTDecisionMaker._assign_savd_positioning` in `Decision_Maker_OHT.py`, driven by
-`_SavdPositioningMonitor` in `Simulation_Main.py`.
+Implementation: `OHTDecisionMaker._assign_SEVD_positioning` in `Decision_Maker_OHT.py`, driven by
+`_SEVDPositioningMonitor` in `Simulation_Main.py`.
 
 ## UI
 
@@ -143,8 +143,8 @@ pip install -r requirements.txt          # salabim, numpy, scipy, pandas (Python
 **Single run** — 120 OHTs, 24 h, seed 1 by default:
 
 ```bash
-python run.py savd out_savd 1                 # proposed method
-python run.py savd out_hun  1 --savd-on 0     # its control: Hungarian, positioning off
+python run.py SEVD out_SEVD 1                 # proposed method
+python run.py SEVD out_hun  1 --SEVD-on 0     # its control: Hungarian, positioning off
 python run.py rule out_nvf  1 NVF             # a baseline rule
 python run.py rule out_test 1 HUNGARIAN --horizon 1800 --n-oht 60    # short smoke test
 ```
@@ -155,17 +155,17 @@ directory. Options: `--n-oht`, `--horizon`, `python run.py -h`.
 **UI**:
 
 ```bash
-python run_ui.py                              # SAVD, then open http://127.0.0.1:8765
+python run_ui.py                              # SEVD, then open http://127.0.0.1:8765
 python run_ui.py --method HUNGARIAN --seed 3 --n-oht 100
 python run_ui.py --horizon 7200 --refresh-sec 5 --port 8899
-python run_ui.py --no-run --output-dir out_savd    # replay a finished run
+python run_ui.py --no-run --output-dir out_SEVD    # replay a finished run
 ```
 
 **Experiments** — every method shares the seed set, so comparisons are paired:
 
 ```bash
 python main_exp_run.py            # 7 methods x 20 seeds
-python abl_run.py                 # SAVD ablation
+python abl_run.py                 # SEVD ablation
 python sweep_run.py --n-oht 100   # fleet-size sweep, one density per call
 python main_exp_merge.py          # merge shards of a split batch
 ```
@@ -177,5 +177,5 @@ single-threaded, so batches should be launched in parallel with `OMP_NUM_THREADS
 
 © 2026 the authors. All rights reserved.
 
-* **Simulation (SOMOS) & method (SAVD)** — Jungwoo Ahn
+* **Simulation (SOMOS) & method (SEVD)** — Jungwoo Ahn
 * **User interface** — Jihoon Bae
